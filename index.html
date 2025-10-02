@@ -57,6 +57,16 @@
       </form>
     </section>
 
+    <section class="bg-white rounded shadow p-4 flex flex-wrap gap-3 items-center text-sm">
+      <h2 class="basis-full text-lg font-semibold">Хранилище данных</h2>
+      <button id="exportBtn" class="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded">Экспорт JSON</button>
+      <button id="importBtn" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded">Импорт JSON</button>
+      <button id="resetDefaultsBtn" class="px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded">Сброс к стартовым</button>
+      <button id="clearAllBtn" class="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded">Очистить все</button>
+      <p class="text-xs text-slate-500 basis-full">Данные сохраняются в <code>localStorage</code> в браузере (GitHub Pages не позволяет писать в файл <code>contacts.json</code> напрямую).</p>
+      <input type="file" id="importFile" accept="application/json" class="hidden" />
+    </section>
+
     <section class="bg-white rounded shadow p-4 space-y-4">
       <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
         <h2 class="text-xl font-semibold">Список активных контактов</h2>
@@ -98,11 +108,73 @@
   <script>
     // Имитация загрузки JSON файла (в реальном окружении нужно бы использовать fetch, но локальный файл без сервера не загрузится)
     // Поэтому встроим начальные данные прямо здесь и синхронизируем их с локальным contacts.json вручную при необходимости.
-    let contacts = [
+    const DEFAULT_CONTACTS = [
       { id: 1, name: 'Иван Петров', email: 'ivan.petrov@example.com', phone: '+7 900 111-11-11', status: 1 },
       { id: 2, name: 'Анна Смирнова', email: 'anna.smirnova@example.com', phone: '+7 900 222-22-22', status: 0 },
       { id: 3, name: 'Сергей Волков', email: 'sergey.volkov@example.com', phone: '+7 900 333-33-33', status: 1 }
     ];
+    let contacts = [];
+
+    const STORAGE_KEY = 'contactsData';
+
+    function saveToLocal() {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(contacts)); } catch(e){ console.warn('Не удалось сохранить в localStorage', e); }
+    }
+    function loadFromLocal() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            contacts = parsed;
+            return;
+          }
+        }
+      } catch(e) { console.warn('Ошибка чтения localStorage', e); }
+      contacts = JSON.parse(JSON.stringify(DEFAULT_CONTACTS));
+      saveToLocal();
+    }
+    function resetToDefaults() {
+      contacts = JSON.parse(JSON.stringify(DEFAULT_CONTACTS));
+      saveToLocal();
+      render();
+    }
+    function clearAllContacts() {
+      contacts = [];
+      saveToLocal();
+      render();
+    }
+    function exportContacts() {
+      const blob = new Blob([JSON.stringify(contacts, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const ts = new Date().toISOString().replace(/[:T]/g,'-').split('.')[0];
+      a.download = `contacts-${ts}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+    function importContactsFromObject(arr) {
+      if (!Array.isArray(arr)) throw new Error('Ожидался массив');
+      // простая валидация структуры
+      const ok = arr.every(o => typeof o.id === 'number' && typeof o.name === 'string');
+      if (!ok) throw new Error('Некорректный формат данных');
+      contacts = arr.map(c => ({
+        id: Number(c.id),
+        name: String(c.name),
+        email: String(c.email||''),
+        phone: String(c.phone||''),
+        status: Number(c.status) ? 1 : 0
+      }));
+      saveToLocal();
+      render();
+    }
+    function importContactsFromString(jsonString) {
+      const data = JSON.parse(jsonString);
+      importContactsFromObject(data);
+    }
+    // Инициализация
+    loadFromLocal();
 
     // ====== ФУНКЦИИ API ======
     function getAllContacts() {
@@ -158,6 +230,7 @@
       const formattedPhone = normalizePhone(contactData.phone);
       const newContact = { id: nextId, ...contactData, phone: formattedPhone, status: Number(contactData.status) || 0 };
       contacts.push(newContact);
+      saveToLocal();
       render();
       return newContact;
     }
@@ -175,17 +248,19 @@
       merged.phone = normalizePhone(merged.phone);
       merged.status = Number(merged.status);
       contacts[idx] = merged;
+      saveToLocal();
       render();
       return contacts[idx];
     }
 
     function deleteContact(id) {
       contacts = contacts.filter(c => c.id !== id);
+      saveToLocal();
       render();
     }
 
     // Экспортируем функции в globalThis для доступа из консоли
-    Object.assign(window, { getAllContacts, addContact, findActiveContact, updateContact, deleteContact });
+  Object.assign(window, { getAllContacts, addContact, findActiveContact, updateContact, deleteContact, exportContacts, importContactsFromString, resetToDefaults, clearAllContacts });
 
     // ====== UI ======
     const tableBody = document.getElementById('contactsTable');
@@ -194,6 +269,11 @@
     const showActiveBtn = document.getElementById('showActive');
     const showAllBtn = document.getElementById('showAll');
     const sortButtons = document.querySelectorAll('.sort-btn');
+  const exportBtn = document.getElementById('exportBtn');
+  const importBtn = document.getElementById('importBtn');
+  const importFile = document.getElementById('importFile');
+  const resetDefaultsBtn = document.getElementById('resetDefaultsBtn');
+  const clearAllBtn = document.getElementById('clearAllBtn');
 
     let currentFilter = 'active'; // 'active' | 'all'
     let currentSort = { field: 'id', dir: 'asc' }; // dir: 'asc' | 'desc'
@@ -323,6 +403,21 @@
       form.reset();
       document.getElementById('contactId').value = '';
     });
+
+    exportBtn.addEventListener('click', () => exportContacts());
+    importBtn.addEventListener('click', () => importFile.click());
+    importFile.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try { importContactsFromString(reader.result); } catch(err){ alert('Ошибка импорта: ' + err.message); }
+        importFile.value = '';
+      };
+      reader.readAsText(file, 'utf-8');
+    });
+    resetDefaultsBtn.addEventListener('click', () => { if (confirm('Сбросить данные к стартовым?')) resetToDefaults(); });
+    clearAllBtn.addEventListener('click', () => { if (confirm('Удалить ВСЕ контакты?')) clearAllContacts(); });
 
     showActiveBtn.addEventListener('click', () => { currentFilter = 'active'; render(); });
     showAllBtn.addEventListener('click', () => { currentFilter = 'all'; render(); });
