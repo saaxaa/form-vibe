@@ -1,0 +1,14 @@
+# Normalize all text files to LF in repo; Git will checkout as CRLF on Windows if core.autocrlf=true
+* text=auto
+
+# Explicitly define common text file types
+*.md text
+*.html text
+*.json text
+*.js text
+
+# Prevent line ending normalization for binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary

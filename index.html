@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Контакты</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Ubuntu,"Helvetica Neue",Arial,sans-serif; }
+    .vk-bg { background: #2a5885; }
+    .vk-accent { color: #2a5885; }
+    .vk-btn { background:#2a5885; }
+    .vk-btn:hover { background:#244b72; }
+    .vk-badge-active { background:#4BB34B; }
+    .vk-badge-inactive { background:#A3ADB8; }
+    .sort-active { color:#2a5885; font-weight:600; }
+  </style>
+</head>
+<body class="min-h-screen bg-slate-100">
+  <header class="vk-bg text-white p-4 shadow">
+    <h1 class="text-2xl font-semibold">Управление контактами</h1>
+  </header>
+
+  <main class="max-w-6xl mx-auto p-4 space-y-6">
+    <section class="bg-white rounded shadow p-4">
+      <h2 class="text-xl font-semibold mb-3">Добавить / Изменить контакт</h2>
+      <form id="contactForm" class="grid md:grid-cols-5 gap-4 items-end">
+        <div>
+          <label class="block text-sm mb-1" for="name">Имя</label>
+          <input id="name" class="w-full border rounded px-2 py-1" required />
+        </div>
+        <div>
+          <label class="block text-sm mb-1" for="email">Email</label>
+          <input id="email" type="email" class="w-full border rounded px-2 py-1" required />
+        </div>
+        <div>
+          <label class="block text-sm mb-1" for="phone">Телефон</label>
+          <input id="phone" class="w-full border rounded px-2 py-1" placeholder="+7 ..." required />
+        </div>
+        <div>
+          <label class="block text-sm mb-1" for="status">Статус</label>
+          <select id="status" class="w-full border rounded px-2 py-1">
+            <option value="1">Активный</option>
+            <option value="0">Не активный</option>
+          </select>
+        </div>
+        <div class="flex gap-2">
+          <button type="submit" class="vk-btn text-white px-4 py-2 rounded">Сохранить</button>
+          <button type="button" id="resetBtn" class="bg-slate-400 hover:bg-slate-500 text-white px-3 py-2 rounded">Сброс</button>
+        </div>
+        <input type="hidden" id="contactId" />
+      </form>
+    </section>
+
+    <section class="bg-white rounded shadow p-4 space-y-4">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <h2 class="text-xl font-semibold">Список активных контактов</h2>
+        <div class="flex flex-wrap gap-2 text-sm">
+          <span class="font-medium">Сортировать по:</span>
+          <button data-sort="id" class="sort-btn px-3 py-1 rounded border bg-slate-50 hover:bg-slate-100">ID</button>
+          <button data-sort="name" class="sort-btn px-3 py-1 rounded border bg-slate-50 hover:bg-slate-100">Имени</button>
+          <button data-sort="email" class="sort-btn px-3 py-1 rounded border bg-slate-50 hover:bg-slate-100">Email</button>
+          <button data-sort="phone" class="sort-btn px-3 py-1 rounded border bg-slate-50 hover:bg-slate-100">Телефону</button>
+          <button data-sort="status" class="sort-btn px-3 py-1 rounded border bg-slate-50 hover:bg-slate-100">Статусу</button>
+        </div>
+      </div>
+
+      <div class="flex gap-3 text-sm">
+        <button id="showActive" class="vk-btn text-white px-4 py-2 rounded">Активные</button>
+        <button id="showAll" class="bg-slate-500 hover:bg-slate-600 text-white px-4 py-2 rounded">Все</button>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="bg-slate-200">
+            <tr>
+              <th class="p-2 text-left">ID</th>
+              <th class="p-2 text-left">Имя</th>
+              <th class="p-2 text-left">Email</th>
+              <th class="p-2 text-left">Телефон</th>
+              <th class="p-2 text-left">Статус</th>
+              <th class="p-2 text-left">Действия</th>
+            </tr>
+          </thead>
+          <tbody id="contactsTable"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer class="text-center text-xs text-slate-500 py-6">Demo контактов (JSON в памяти) • Tailwind • VK стиль</footer>
+
+  <script>
+    // Имитация загрузки JSON файла (в реальном окружении нужно бы использовать fetch, но локальный файл без сервера не загрузится)
+    // Поэтому встроим начальные данные прямо здесь и синхронизируем их с локальным contacts.json вручную при необходимости.
+    let contacts = [
+      { id: 1, name: 'Иван Петров', email: 'ivan.petrov@example.com', phone: '+7 900 111-11-11', status: 1 },
+      { id: 2, name: 'Анна Смирнова', email: 'anna.smirnova@example.com', phone: '+7 900 222-22-22', status: 0 },
+      { id: 3, name: 'Сергей Волков', email: 'sergey.volkov@example.com', phone: '+7 900 333-33-33', status: 1 }
+    ];
+
+    // ====== ФУНКЦИИ API ======
+    function getAllContacts() {
+      return [...contacts];
+    }
+
+    function addContact(contactData) {
+      // contactData: { name, email, phone, status }
+      const nextId = contacts.length ? Math.max(...contacts.map(c => c.id)) + 1 : 1;
+      const newContact = { id: nextId, ...contactData, status: Number(contactData.status) || 0 };
+      contacts.push(newContact);
+      render();
+      return newContact;
+    }
+
+    function findActiveContact() { // возвращает только активные
+      return contacts.filter(c => Number(c.status) === 1);
+    }
+
+    function updateContact(id, data) {
+      const idx = contacts.findIndex(c => c.id === id);
+      if (idx === -1) return null;
+      contacts[idx] = { ...contacts[idx], ...data, status: Number(data.status ?? contacts[idx].status) };
+      render();
+      return contacts[idx];
+    }
+
+    function deleteContact(id) {
+      contacts = contacts.filter(c => c.id !== id);
+      render();
+    }
+
+    // Экспортируем функции в globalThis для доступа из консоли
+    Object.assign(window, { getAllContacts, addContact, findActiveContact, updateContact, deleteContact });
+
+    // ====== UI ======
+    const tableBody = document.getElementById('contactsTable');
+    const form = document.getElementById('contactForm');
+    const resetBtn = document.getElementById('resetBtn');
+    const showActiveBtn = document.getElementById('showActive');
+    const showAllBtn = document.getElementById('showAll');
+    const sortButtons = document.querySelectorAll('.sort-btn');
+
+    let currentFilter = 'active'; // 'active' | 'all'
+    let currentSort = { field: 'id', dir: 'asc' }; // dir: 'asc' | 'desc'
+
+    function sortData(data) {
+      const { field, dir } = currentSort;
+      const sorted = [...data].sort((a,b) => {
+        let va = a[field];
+        let vb = b[field];
+        if (typeof va === 'string') va = va.toLowerCase();
+        if (typeof vb === 'string') vb = vb.toLowerCase();
+        if (va < vb) return dir === 'asc' ? -1 : 1;
+        if (va > vb) return dir === 'asc' ? 1 : -1;
+        return 0;
+      });
+      return sorted;
+    }
+
+    function render() {
+      let data = currentFilter === 'active' ? findActiveContact() : getAllContacts();
+      data = sortData(data);
+      tableBody.innerHTML = data.map(c => `
+        <tr class="border-b last:border-0 hover:bg-slate-50">
+          <td class="p-2">${c.id}</td>
+          <td class="p-2">${c.name}</td>
+          <td class="p-2">${c.email}</td>
+          <td class="p-2">${c.phone}</td>
+          <td class="p-2">
+            <span class="text-white text-xs px-2 py-1 rounded ${c.status == 1 ? 'vk-badge-active' : 'vk-badge-inactive'}">${c.status == 1 ? 'Активный' : 'Не активный'}</span>
+          </td>
+          <td class="p-2 space-x-2">
+            <button class="text-xs px-2 py-1 rounded bg-amber-500 hover:bg-amber-600 text-white" data-edit="${c.id}">Изм.</button>
+            <button class="text-xs px-2 py-1 rounded bg-red-600 hover:bg-red-700 text-white" data-del="${c.id}">Удалить</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    tableBody.addEventListener('click', (e) => {
+      const editId = e.target.getAttribute('data-edit');
+      const delId = e.target.getAttribute('data-del');
+      if (editId) {
+        const c = contacts.find(c => c.id === Number(editId));
+        if (!c) return;
+        document.getElementById('contactId').value = c.id;
+        document.getElementById('name').value = c.name;
+        document.getElementById('email').value = c.email;
+        document.getElementById('phone').value = c.phone;
+        document.getElementById('status').value = c.status;
+        window.scrollTo({ top:0, behavior:'smooth' });
+      }
+      if (delId) {
+        if (confirm('Удалить контакт #' + delId + '?')) {
+          deleteContact(Number(delId));
+        }
+      }
+    });
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const id = Number(document.getElementById('contactId').value);
+      const name = document.getElementById('name').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const phone = document.getElementById('phone').value.trim();
+      const status = Number(document.getElementById('status').value);
+      if (!name || !email || !phone) return;
+      if (id) {
+        updateContact(id, { name, email, phone, status });
+      } else {
+        addContact({ name, email, phone, status });
+      }
+      form.reset();
+      document.getElementById('contactId').value = '';
+    });
+
+    resetBtn.addEventListener('click', () => {
+      form.reset();
+      document.getElementById('contactId').value = '';
+    });
+
+    showActiveBtn.addEventListener('click', () => { currentFilter = 'active'; render(); });
+    showAllBtn.addEventListener('click', () => { currentFilter = 'all'; render(); });
+
+    sortButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const field = btn.getAttribute('data-sort');
+        if (currentSort.field === field) {
+          currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
+        } else {
+          currentSort.field = field;
+          currentSort.dir = 'asc';
+        }
+        sortButtons.forEach(b => b.classList.remove('sort-active'));
+        btn.classList.add('sort-active');
+        render();
+      });
+    });
+
+    // Первичная отрисовка
+    render();
+
+    // Подсказка в консоль
+    console.log('%cДоступные функции: getAllContacts(), addContact({name,email,phone,status}), findActiveContact(), updateContact(id, data), deleteContact(id)', 'color:#2a5885;font-weight:bold;');
+    console.log('Например: addContact({ name: "Новый", email: "new@example.com", phone: "+7 900 000-00-00", status:1 })');
+  </script>
+</body>
+</html>
