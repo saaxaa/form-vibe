@@ -24,18 +24,23 @@
   <main class="max-w-6xl mx-auto p-4 space-y-6">
     <section class="bg-white rounded shadow p-4">
       <h2 class="text-xl font-semibold mb-3">Добавить / Изменить контакт</h2>
-      <form id="contactForm" class="grid md:grid-cols-5 gap-4 items-end">
+      <form id="contactForm" class="grid md:grid-cols-5 gap-4 items-end" novalidate>
         <div>
           <label class="block text-sm mb-1" for="name">Имя</label>
-          <input id="name" class="w-full border rounded px-2 py-1" required />
+          <input id="name" class="w-full border rounded px-2 py-1" required aria-describedby="nameHelp nameError" placeholder="Иван Петров" pattern="[A-Za-zА-Яа-яЁё'\-\s]{2,50}" title="Только буквы, пробел, дефис, апостроф. 2-50 символов." />
+          <p id="nameHelp" class="text-[11px] text-slate-500 mt-1">Допустимы: буквы, пробел, - и ' (мин. 2 символа)</p>
+          <p id="nameError" class="hidden text-[11px] text-red-600 mt-1"></p>
         </div>
         <div>
           <label class="block text-sm mb-1" for="email">Email</label>
-          <input id="email" type="email" class="w-full border rounded px-2 py-1" required />
+          <input id="email" type="email" class="w-full border rounded px-2 py-1" required aria-describedby="emailHelp" placeholder="name@example.com" />
+          <p id="emailHelp" class="text-[11px] text-slate-500 mt-1">Стандартный формат e-mail (user@domain)</p>
         </div>
         <div>
           <label class="block text-sm mb-1" for="phone">Телефон</label>
-          <input id="phone" class="w-full border rounded px-2 py-1" placeholder="+7 ..." required />
+          <input id="phone" class="w-full border rounded px-2 py-1" placeholder="+7 900 123-45-67" required aria-describedby="phoneHelp phoneError" title="11 цифр РФ: +7 XXX XXX-XX-XX" />
+          <p id="phoneHelp" class="text-[11px] text-slate-500 mt-1">Формат: +7 900 123-45-67 (только цифры, пробелы, -)</p>
+          <p id="phoneError" class="hidden text-[11px] text-red-600 mt-1"></p>
         </div>
         <div>
           <label class="block text-sm mb-1" for="status">Статус</label>
@@ -104,10 +109,54 @@
       return [...contacts];
     }
 
+    // ====== ВАЛИДАЦИЯ ======
+    const NAME_REGEX = /^[A-Za-zА-Яа-яЁё'\-\s]{2,50}$/;
+    function normalizePhone(raw) {
+      const digits = (raw || '').replace(/\D/g, '');
+      if (!digits) return '';
+      if (digits.length === 11) {
+        let d = digits;
+        if (d[0] === '8') d = '7' + d.slice(1);
+        if (d[0] === '7') {
+          return `+7 ${d.slice(1,4)} ${d.slice(4,7)}-${d.slice(7,9)}-${d.slice(9,11)}`;
+        }
+      }
+      return raw;
+    }
+
+    function isValidPhone(raw) {
+      const digits = (raw || '').replace(/\D/g, '');
+      if (digits.length !== 11) return false;
+      if (!['7','8'].includes(digits[0])) return false;
+      return true;
+    }
+
+    function validateName(name) {
+      if (!name) return { valid:false, message:'Имя обязательно' };
+      if (!NAME_REGEX.test(name)) return { valid:false, message:'Только буквы, пробел, - и \' (мин. 2 символа)' };
+      return { valid:true };
+    }
+
+    function validatePhone(phone) {
+      if (!phone) return { valid:false, message:'Телефон обязателен' };
+      if (!isValidPhone(phone)) return { valid:false, message:'Нужно 11 цифр (начинается с +7 или 8)' };
+      return { valid:true };
+    }
+
+    function validateContactData(data) {
+      const n = validateName(data.name);
+      if (!n.valid) return { field:'name', ...n };
+      const p = validatePhone(data.phone);
+      if (!p.valid) return { field:'phone', ...p };
+      return { valid:true };
+    }
+
     function addContact(contactData) {
-      // contactData: { name, email, phone, status }
+      const check = validateContactData(contactData);
+      if (!check.valid) throw new Error('Ошибка валидации (' + check.field + '): ' + check.message);
       const nextId = contacts.length ? Math.max(...contacts.map(c => c.id)) + 1 : 1;
-      const newContact = { id: nextId, ...contactData, status: Number(contactData.status) || 0 };
+      const formattedPhone = normalizePhone(contactData.phone);
+      const newContact = { id: nextId, ...contactData, phone: formattedPhone, status: Number(contactData.status) || 0 };
       contacts.push(newContact);
       render();
       return newContact;
@@ -120,7 +169,12 @@
     function updateContact(id, data) {
       const idx = contacts.findIndex(c => c.id === id);
       if (idx === -1) return null;
-      contacts[idx] = { ...contacts[idx], ...data, status: Number(data.status ?? contacts[idx].status) };
+      const merged = { ...contacts[idx], ...data };
+      const check = validateContactData(merged);
+      if (!check.valid) throw new Error('Ошибка валидации (' + check.field + '): ' + check.message);
+      merged.phone = normalizePhone(merged.phone);
+      merged.status = Number(merged.status);
+      contacts[idx] = merged;
       render();
       return contacts[idx];
     }
@@ -198,21 +252,71 @@
       }
     });
 
+    // ====== ВАЛИДАЦИЯ UI ======
+    const nameInput = document.getElementById('name');
+    const phoneInput = document.getElementById('phone');
+    const nameError = document.getElementById('nameError');
+    const phoneError = document.getElementById('phoneError');
+
+    function setError(input, errorEl, message) {
+      if (message) {
+        errorEl.textContent = message;
+        errorEl.classList.remove('hidden');
+        input.classList.add('border-red-500');
+        input.setAttribute('aria-invalid','true');
+      } else {
+        errorEl.textContent = '';
+        errorEl.classList.add('hidden');
+        input.classList.remove('border-red-500');
+        input.removeAttribute('aria-invalid');
+      }
+    }
+
+    function liveValidateName() {
+      const v = nameInput.value.trim();
+      const res = validateName(v);
+      setError(nameInput, nameError, res.valid ? '' : res.message);
+      return res.valid;
+    }
+
+    function liveValidatePhone() {
+      const v = phoneInput.value.trim();
+      const cleaned = v.replace(/[^0-9+\-\s()]/g, '');
+      if (cleaned !== v) {
+        phoneInput.value = cleaned;
+      }
+      const res = validatePhone(phoneInput.value);
+      setError(phoneInput, phoneError, res.valid ? '' : res.message);
+      return res.valid;
+    }
+
+    nameInput.addEventListener('input', liveValidateName);
+    phoneInput.addEventListener('input', liveValidatePhone);
+
     form.addEventListener('submit', (e) => {
       e.preventDefault();
       const id = Number(document.getElementById('contactId').value);
-      const name = document.getElementById('name').value.trim();
+      const name = nameInput.value.trim();
       const email = document.getElementById('email').value.trim();
-      const phone = document.getElementById('phone').value.trim();
+      const phone = phoneInput.value.trim();
       const status = Number(document.getElementById('status').value);
-      if (!name || !email || !phone) return;
-      if (id) {
-        updateContact(id, { name, email, phone, status });
-      } else {
-        addContact({ name, email, phone, status });
+
+      const okName = liveValidateName();
+      const okPhone = liveValidatePhone();
+      if (!okName || !okPhone) return;
+      try {
+        if (id) {
+          updateContact(id, { name, email, phone, status });
+        } else {
+          addContact({ name, email, phone, status });
+        }
+        form.reset();
+        document.getElementById('contactId').value = '';
+        setError(nameInput, nameError, '');
+        setError(phoneInput, phoneError, '');
+      } catch(err) {
+        console.error(err.message);
       }
-      form.reset();
-      document.getElementById('contactId').value = '';
     });
 
     resetBtn.addEventListener('click', () => {
